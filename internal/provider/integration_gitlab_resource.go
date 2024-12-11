@@ -244,6 +244,43 @@ func (r *integrationGitlabResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Read API call logic
+	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read GitHub integration, got error: %s", err))
+		return
+	}
+
+	// Update fields from API response
+	data.Name = types.StringValue(integration.Name)
+
+	// Handle group and base_url
+	if integration.ConfigurationOptions.GitlabConfigurationOptions.Group != "" {
+		data.Group = types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.Group)
+	} else {
+		data.Group = types.StringNull()
+	}
+	if integration.ConfigurationOptions.GitlabConfigurationOptions.BaseURL != "" {
+		data.BaseURL = types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.BaseURL)
+	} else {
+		data.BaseURL = types.StringNull()
+	}
+	// Handle discovery settings
+	if integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverGroups ||
+		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverProjects ||
+		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverTerraform ||
+		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverK8sManifests {
+		// Initialize discovery if it has settings
+		data.Discovery = &integrationGitlabDiscoveryModel{
+			Groups:       types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverGroups),
+			Projects:     types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverProjects),
+			Terraform:    types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverTerraform),
+			K8sManifests: types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverK8sManifests),
+		}
+	} else {
+		// Set discovery to null if no discovery settings are present
+		data.Discovery = nil
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
