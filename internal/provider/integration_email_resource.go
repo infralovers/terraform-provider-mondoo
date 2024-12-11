@@ -362,9 +362,34 @@ func (r *integrationEmailResource) Read(ctx context.Context, req resource.ReadRe
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.Diagnostics.
+			AddError("Client Error", fmt.Sprintf("Unable to read Email integration, got error: %s", err))
+		return
+	}
+
+	var recipients []integrationEmailRecipientInput
+	for _, recipient := range integration.ConfigurationOptions.EmailConfigurationOptions.Recipients {
+		recipients = append(recipients, integrationEmailRecipientInput{
+			Name:         types.StringValue(recipient.Name),
+			Email:        types.StringValue(recipient.Email),
+			IsDefault:    types.BoolValue(recipient.IsDefault),
+			ReferenceURL: types.StringValue(recipient.ReferenceURL),
+		})
+	}
+
+	model := integrationEmailResourceModel{
+		Mrn:               types.StringValue(integration.Mrn),
+		Name:              types.StringValue(integration.Name),
+		SpaceID:           types.StringValue(integration.SpaceID()),
+		AutoCreateTickets: types.BoolValue(integration.ConfigurationOptions.EmailConfigurationOptions.AutoCreateTickets),
+		AutoCloseTickets:  types.BoolValue(data.AutoCreateTickets.ValueBool()),
+		Recipients:        &recipients,
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationEmailResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
