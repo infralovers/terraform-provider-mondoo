@@ -214,7 +214,7 @@ func (r *integrationGithubResource) Create(ctx context.Context, req resource.Cre
 	if err != nil {
 		resp.Diagnostics.
 			AddError("Client Error",
-				fmt.Sprintf("Unable to create Domain integration, got error: %s", err),
+				fmt.Sprintf("Unable to create GitHub integration, got error: %s", err),
 			)
 		return
 	}
@@ -250,6 +250,32 @@ func (r *integrationGithubResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read GitHub integration, got error: %s", err))
+		return
+	}
+
+	data.Name = types.StringValue(integration.Name)
+	data.Owner = types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Owner)
+	if integration.ConfigurationOptions.GithubConfigurationOptions.Repository != "" {
+		data.Repository = types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Repository)
+	} else {
+		data.Repository = types.StringNull()
+	}
+
+	// Handle allow list and deny list
+	if len(integration.ConfigurationOptions.GithubConfigurationOptions.ReposAllowList) == 0 {
+		data.RepositoryAllowList = types.ListNull(types.StringType)
+	} else {
+		data.RepositoryAllowList = ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposAllowList)
+	}
+
+	if len(integration.ConfigurationOptions.GithubConfigurationOptions.ReposDenyList) == 0 {
+		data.RepositoryDenyList = types.ListNull(types.StringType)
+	} else {
+		data.RepositoryDenyList = ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposDenyList)
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -279,7 +305,7 @@ func (r *integrationGithubResource) Update(ctx context.Context, req resource.Upd
 	if err != nil {
 		resp.Diagnostics.
 			AddError("Client Error",
-				fmt.Sprintf("Unable to update Domain integration, got error: %s", err),
+				fmt.Sprintf("Unable to update GitHub integration, got error: %s", err),
 			)
 		return
 	}
@@ -303,7 +329,7 @@ func (r *integrationGithubResource) Delete(ctx context.Context, req resource.Del
 	if err != nil {
 		resp.Diagnostics.
 			AddError("Client Error",
-				fmt.Sprintf("Unable to delete Domain integration, got error: %s", err),
+				fmt.Sprintf("Unable to delete GitHub integration, got error: %s", err),
 			)
 		return
 	}
