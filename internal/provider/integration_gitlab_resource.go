@@ -6,9 +6,13 @@ import (
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -112,35 +116,59 @@ func (r *integrationGitlabResource) Schema(ctx context.Context, req resource.Sch
 			"group": schema.StringAttribute{
 				MarkdownDescription: "Group to assign the integration to (by default all groups are discovered).",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
 			},
 			"base_url": schema.StringAttribute{
 				MarkdownDescription: "Base URL of the GitLab instance (only set this if your instance is self-hosted).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(
 						regexp.MustCompile(`^https?:\/\/[a-zA-Z0-9\-._~:\/?#[\]@!$&'()*+,;=%]+$`),
 						"must be a valid URL",
 					),
 				},
+				Default: stringdefault.StaticString(""),
 			},
 			"discovery": schema.SingleNestedAttribute{
 				Optional: true,
+				Computed: true,
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"groups":        types.BoolType,
+					"projects":      types.BoolType,
+					"terraform":     types.BoolType,
+					"k8s_manifests": types.BoolType,
+				}, map[string]attr.Value{
+					"groups":        types.BoolValue(false),
+					"projects":      types.BoolValue(false),
+					"terraform":     types.BoolValue(false),
+					"k8s_manifests": types.BoolValue(false),
+				})),
 				Attributes: map[string]schema.Attribute{
 					"groups": schema.BoolAttribute{
 						MarkdownDescription: "Enable discovery of GitLab groups.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"projects": schema.BoolAttribute{
 						MarkdownDescription: "Enable discovery of GitLab projects.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"terraform": schema.BoolAttribute{
 						MarkdownDescription: "Enable discovery of Terraform configurations.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"k8s_manifests": schema.BoolAttribute{
 						MarkdownDescription: "Enable discovery of Kubernetes manifests.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -244,42 +272,27 @@ func (r *integrationGitlabResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Read API call logic
-	// Read API call logic
 	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
 	if err != nil {
 		resp.State.RemoveResource(ctx)
 		return
 	}
 
-	// Update fields from API response
-	data.Name = types.StringValue(integration.Name)
-
-	// Handle group and base_url
-	if integration.ConfigurationOptions.GitlabConfigurationOptions.Group != "" {
-		data.Group = types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.Group)
-	} else {
-		data.Group = types.StringNull()
-	}
-	if integration.ConfigurationOptions.GitlabConfigurationOptions.BaseURL != "" {
-		data.BaseURL = types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.BaseURL)
-	} else {
-		data.BaseURL = types.StringNull()
-	}
-	// Handle discovery settings
-	if integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverGroups ||
-		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverProjects ||
-		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverTerraform ||
-		integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverK8sManifests {
-		// Initialize discovery if it has settings
-		data.Discovery = &integrationGitlabDiscoveryModel{
+	data = integrationGitlabResourceModel{
+		Mrn:     types.StringValue(integration.Mrn),
+		Name:    types.StringValue(integration.Name),
+		SpaceID: types.StringValue(integration.SpaceID()),
+		Group:   types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.Group),
+		BaseURL: types.StringValue(integration.ConfigurationOptions.GitlabConfigurationOptions.BaseURL),
+		Discovery: &integrationGitlabDiscoveryModel{
 			Groups:       types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverGroups),
 			Projects:     types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverProjects),
 			Terraform:    types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverTerraform),
 			K8sManifests: types.BoolValue(integration.ConfigurationOptions.GitlabConfigurationOptions.DiscoverK8sManifests),
-		}
-	} else {
-		// Set discovery to null if no discovery settings are present
-		data.Discovery = nil
+		},
+		Credential: &integrationGitlabCredentialModel{
+			Token: types.StringValue(data.Credential.Token.ValueString()),
+		},
 	}
 
 	// Save updated data into Terraform state
