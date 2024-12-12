@@ -9,7 +9,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -246,10 +248,14 @@ func (r *integrationEmailResource) Schema(ctx context.Context, req resource.Sche
 						"is_default": schema.BoolAttribute{
 							MarkdownDescription: "Mark this recipient as default. This needs to be set if auto_create is enabled.",
 							Optional:            true,
+							Computed:            true,
+							Default:             booldefault.StaticBool(false),
 						},
 						"reference_url": schema.StringAttribute{
 							MarkdownDescription: "Reference URL for the recipient.",
 							Optional:            true,
+							Computed:            true,
+							Default:             stringdefault.StaticString(""),
 						},
 					},
 				},
@@ -260,13 +266,17 @@ func (r *integrationEmailResource) Schema(ctx context.Context, req resource.Sche
 			"auto_create": schema.BoolAttribute{
 				MarkdownDescription: "Auto create tickets (defaults to false).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Bool{
 					NewAutoCreateValidator(),
 				},
+				Default: booldefault.StaticBool(false),
 			},
 			"auto_close": schema.BoolAttribute{
 				MarkdownDescription: "Auto close tickets (defaults to false).",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -364,8 +374,7 @@ func (r *integrationEmailResource) Read(ctx context.Context, req resource.ReadRe
 	// Read API call logic
 	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
 	if err != nil {
-		resp.Diagnostics.
-			AddError("Client Error", fmt.Sprintf("Unable to read Email integration, got error: %s", err))
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -384,7 +393,7 @@ func (r *integrationEmailResource) Read(ctx context.Context, req resource.ReadRe
 		Name:              types.StringValue(integration.Name),
 		SpaceID:           types.StringValue(integration.SpaceID()),
 		AutoCreateTickets: types.BoolValue(integration.ConfigurationOptions.EmailConfigurationOptions.AutoCreateTickets),
-		AutoCloseTickets:  types.BoolValue(data.AutoCreateTickets.ValueBool()),
+		AutoCloseTickets:  types.BoolValue(data.AutoCloseTickets.ValueBool()),
 		Recipients:        &recipients,
 	}
 
