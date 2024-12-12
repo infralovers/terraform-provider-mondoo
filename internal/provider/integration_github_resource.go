@@ -7,10 +7,13 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -121,10 +124,13 @@ func (r *integrationGithubResource) Schema(ctx context.Context, req resource.Sch
 			"repository": schema.StringAttribute{
 				MarkdownDescription: "GitHub Repository.",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
 			},
 			"repository_allow_list": schema.ListAttribute{
 				MarkdownDescription: "List of GitHub repositories to scan.",
 				Optional:            true,
+				Computed:            true,
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -132,10 +138,12 @@ func (r *integrationGithubResource) Schema(ctx context.Context, req resource.Sch
 						path.MatchRoot("repository_deny_list"),
 					}...),
 				},
+				Default: listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"repository_deny_list": schema.ListAttribute{
 				MarkdownDescription: "List of GitHub repositories to exclude from scanning.",
 				Optional:            true,
+				Computed:            true,
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -143,6 +151,7 @@ func (r *integrationGithubResource) Schema(ctx context.Context, req resource.Sch
 						path.MatchRoot("repository_allow_list"),
 					}...),
 				},
+				Default: listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"credentials": schema.SingleNestedAttribute{
 				Required: true,
@@ -256,29 +265,28 @@ func (r *integrationGithubResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	data.Name = types.StringValue(integration.Name)
-	data.Owner = types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Owner)
-	if integration.ConfigurationOptions.GithubConfigurationOptions.Repository != "" {
-		data.Repository = types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Repository)
-	} else {
-		data.Repository = types.StringNull()
+	allowList := ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposAllowList)
+	denyList := ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposDenyList)
+
+	model := integrationGithubResourceModel{
+		Mrn:                 types.StringValue(integration.Mrn),
+		Name:                types.StringValue(integration.Name),
+		SpaceID:             types.StringValue(integration.SpaceID()),
+		Owner:               types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Owner),
+		Repository:          types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Repository),
+		RepositoryAllowList: allowList,
+		RepositoryDenyList:  denyList,
+		Credential: &integrationGithubCredentialModel{
+			Token: types.StringValue(data.Credential.Token.ValueString()),
+		},
 	}
 
-	// Handle allow list and deny list
-	if len(integration.ConfigurationOptions.GithubConfigurationOptions.ReposAllowList) == 0 {
-		data.RepositoryAllowList = types.ListNull(types.StringType)
-	} else {
-		data.RepositoryAllowList = ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposAllowList)
-	}
-
-	if len(integration.ConfigurationOptions.GithubConfigurationOptions.ReposDenyList) == 0 {
-		data.RepositoryDenyList = types.ListNull(types.StringType)
-	} else {
-		data.RepositoryDenyList = ConvertListValue(integration.ConfigurationOptions.GithubConfigurationOptions.ReposDenyList)
+	if model.Owner.ValueString() == "" {
+		model.Owner = types.StringValue(integration.ConfigurationOptions.GithubConfigurationOptions.Organization)
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationGithubResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
