@@ -247,7 +247,7 @@ func (r *integrationGitlabResource) Read(ctx context.Context, req resource.ReadR
 	// Read API call logic
 	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read GitHub integration, got error: %s", err))
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
