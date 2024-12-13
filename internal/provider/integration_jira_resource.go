@@ -116,16 +116,19 @@ func (r *integrationJiraResource) Schema(ctx context.Context, req resource.Schem
 			"default_project": schema.StringAttribute{
 				MarkdownDescription: "Default Jira project (is represented by the project key e.g. `MONDOO`).",
 				Optional:            true,
+				Computed:            true,
 				Default:             stringdefault.StaticString(""),
 			},
 			"auto_create": schema.BoolAttribute{
 				MarkdownDescription: "Automatically create Jira issues for Mondoo findings.",
 				Optional:            true,
+				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"auto_close": schema.BoolAttribute{
 				MarkdownDescription: "Automatically close Jira issues for resolved Mondoo findings",
 				Optional:            true,
+				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"credentials": schema.SingleNestedAttribute{
