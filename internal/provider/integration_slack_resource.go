@@ -171,9 +171,21 @@ func (r *integrationSlackResource) Read(ctx context.Context, req resource.ReadRe
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationSlackResourceModel{
+		Mrn:        types.StringValue(integration.Mrn),
+		Name:       types.StringValue(integration.Name),
+		SpaceID:    types.StringValue(integration.SpaceID()),
+		SlackToken: types.StringValue(data.SlackToken.ValueString()),
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationSlackResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
