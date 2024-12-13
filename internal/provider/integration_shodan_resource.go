@@ -204,9 +204,26 @@ func (r *integrationShodanResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationShodanResourceModel{
+		Mrn:     types.StringValue(integration.Mrn),
+		Name:    types.StringValue(integration.Name),
+		SpaceID: types.StringValue(integration.SpaceID()),
+		Targets: ConvertListValue(
+			integration.ConfigurationOptions.ShodanConfigurationOptions.Targets,
+		),
+		Credentials: &integrationShodanCredentialModel{
+			Token: types.StringValue(data.Credentials.Token.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationShodanResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -239,7 +256,7 @@ func (r *integrationShodanResource) Update(ctx context.Context, req resource.Upd
 			Diagnostics.
 			AddError("Client Error",
 				fmt.Sprintf(
-					"Unable to update Domain integration, got error: %s", err,
+					"Unable to update Shodan integration, got error: %s", err,
 				),
 			)
 		return
@@ -266,7 +283,7 @@ func (r *integrationShodanResource) Delete(ctx context.Context, req resource.Del
 			Diagnostics.
 			AddError("Client Error",
 				fmt.Sprintf(
-					"Unable to delete Domain integration, got error: %s", err,
+					"Unable to delete Shodan integration, got error: %s", err,
 				),
 			)
 		return
