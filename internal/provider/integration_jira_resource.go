@@ -8,7 +8,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -114,14 +116,17 @@ func (r *integrationJiraResource) Schema(ctx context.Context, req resource.Schem
 			"default_project": schema.StringAttribute{
 				MarkdownDescription: "Default Jira project (is represented by the project key e.g. `MONDOO`).",
 				Optional:            true,
+				Default:             stringdefault.StaticString(""),
 			},
 			"auto_create": schema.BoolAttribute{
 				MarkdownDescription: "Automatically create Jira issues for Mondoo findings.",
 				Optional:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"auto_close": schema.BoolAttribute{
 				MarkdownDescription: "Automatically close Jira issues for resolved Mondoo findings",
 				Optional:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"credentials": schema.SingleNestedAttribute{
 				Required: true,
@@ -212,9 +217,28 @@ func (r *integrationJiraResource) Read(ctx context.Context, req resource.ReadReq
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationJiraResourceModel{
+		Mrn:            types.StringValue(integration.Mrn),
+		Name:           types.StringValue(integration.Name),
+		SpaceID:        types.StringValue(integration.SpaceID()),
+		Host:           types.StringValue(integration.ConfigurationOptions.JiraConfigurationOptions.Host),
+		Email:          types.StringValue(integration.ConfigurationOptions.JiraConfigurationOptions.Email),
+		DefaultProject: types.StringValue(integration.ConfigurationOptions.JiraConfigurationOptions.DefaultProject),
+		AutoCreate:     types.BoolValue(integration.ConfigurationOptions.JiraConfigurationOptions.AutoCreateCases),
+		AutoClose:      types.BoolValue(integration.ConfigurationOptions.JiraConfigurationOptions.AutoCloseTickets),
+		Credential: &integrationJiraCredentialModel{
+			Token: types.StringValue(data.Credential.Token.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationJiraResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
