@@ -278,7 +278,7 @@ func (r *integrationGitlabResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	data = integrationGitlabResourceModel{
+	model := integrationGitlabResourceModel{
 		Mrn:     types.StringValue(integration.Mrn),
 		Name:    types.StringValue(integration.Name),
 		SpaceID: types.StringValue(integration.SpaceID()),
@@ -296,7 +296,7 @@ func (r *integrationGitlabResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationGitlabResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
