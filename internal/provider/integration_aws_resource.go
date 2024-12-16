@@ -242,9 +242,30 @@ func (r *integrationAwsResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationAwsResourceModel{
+		SpaceID: types.StringValue(integration.SpaceID()),
+		Mrn:     types.StringValue(integration.Mrn),
+		Name:    types.StringValue(integration.Name),
+		Credential: integrationAwsCredentialModel{
+			Role: &roleCredentialModel{
+				RoleArn:    types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.Role),
+				ExternalId: types.StringValue(data.Credential.Role.ExternalId.ValueString()),
+			},
+			Key: &accessKeyCredentialModel{
+				AccessKey: types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.AccessKeyId),
+				SecretKey: types.StringValue(data.Credential.Key.SecretKey.ValueString()),
+			},
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationAwsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

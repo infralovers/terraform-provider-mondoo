@@ -481,9 +481,43 @@ func (r *integrationAwsServerlessResource) Read(ctx context.Context, req resourc
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationAwsServerlessResourceModel{
+		Mrn:            types.StringValue(integration.Mrn),
+		Name:           types.StringValue(integration.Name),
+		SpaceID:        types.StringValue(integration.SpaceID()),
+		Token:          types.StringValue(data.Token.ValueString()),
+		Region:         types.StringValue(integration.ConfigurationOptions.AWSConfigurationOptions.Region),
+		AccountIDs:     ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.AccountIDs),
+		IsOrganization: types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.IsOrganization),
+		ScanConfiguration: ScanConfigurationInput{
+			Ec2Scan:           integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2Scan,
+			EcrScan:           integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EcrScan,
+			EcsScan:           integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EcsScan,
+			CronScaninHours:   integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.CronScaninHours,
+			EventScanTriggers: integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EventScanTriggers,
+			Ec2ScanOptions: &Ec2ScanOptionsInput{
+				Ssm:                      integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.Ssm,
+				InstanceIdsFilter:        integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.InstanceIdsFilter,
+				RegionsFilter:            integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.RegionsFilter,
+				TagsFilter:               integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.TagsFilter,
+				ExcludeInstanceIdsFilter: integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludeInstanceIdsFilter,
+				ExcludeRegionsFilter:     integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludeRegionsFilter,
+				ExcludeTagsFilter:        integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludeTagsFilter,
+				EbsVolumeScan:            integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.EbsVolumeScan,
+				InstanceConnect:          integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.InstanceConnect,
+			},
+			VpcConfiguration: integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.VpcConfiguration,
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationAwsServerlessResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

@@ -577,6 +577,14 @@ type HostConfigurationOptions struct {
 	HTTP  bool   `graphql:"http"`
 }
 
+type AWSConfigurationOptions struct {
+	Region            string
+	ScanConfiguration ScanConfigurationInput
+	AccountIDs        []string
+	IsOrganization    bool
+	// V2Template bool
+}
+
 type SlackConfigurationOptions struct {
 	Placeholder string
 }
@@ -661,6 +669,7 @@ type MicrosoftDefenderConfigurationOptionsInput struct {
 type ClientIntegrationConfigurationOptions struct {
 	AzureConfigurationOptions                  AzureConfigurationOptions                  `graphql:"... on AzureConfigurationOptions"`
 	HostConfigurationOptions                   HostConfigurationOptions                   `graphql:"... on HostConfigurationOptions"`
+	AWSConfigurationOptions                    AWSConfigurationOptions                    `graphql:"... on AWSConfigurationOptions"`
 	Ms365ConfigurationOptions                  Ms365ConfigurationOptions                  `graphql:"... on Ms365ConfigurationOptions"`
 	GcpConfigurationOptions                    GcpConfigurationOptions                    `graphql:"... on GcpConfigurationOptions"`
 	SlackConfigurationOptions                  SlackConfigurationOptions                  `graphql:"... on SlackConfigurationOptions"`
