@@ -6,8 +6,11 @@ import (
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -114,14 +117,30 @@ func (r *integrationZendeskResource) Schema(ctx context.Context, req resource.Sc
 			"auto_close": schema.BoolAttribute{
 				MarkdownDescription: "Automatically close tickets.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"auto_create": schema.BoolAttribute{
 				MarkdownDescription: "Automatically create tickets.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"custom_fields": schema.ListNestedAttribute{
 				MarkdownDescription: "Custom fields to be added to the Zendesk ticket.",
 				Optional:            true,
+				Computed:            true,
+				Default: listdefault.StaticValue(
+					types.ListValueMust(
+						types.ObjectType{
+							AttrTypes: map[string]attr.Type{
+								"id":    types.Int64Type,
+								"value": types.StringType,
+							},
+						},
+						[]attr.Value{},
+					),
+				),
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"id": schema.Int64Attribute{
@@ -139,7 +158,7 @@ func (r *integrationZendeskResource) Schema(ctx context.Context, req resource.Sc
 				Required: true,
 				Attributes: map[string]schema.Attribute{
 					"token": schema.StringAttribute{
-						MarkdownDescription: "Token for GitHub integration.",
+						MarkdownDescription: "Token for Zendesk integration.",
 						Required:            true,
 						Sensitive:           true,
 					},
@@ -238,9 +257,41 @@ func (r *integrationZendeskResource) Read(ctx context.Context, req resource.Read
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		fmt.Println("Error: ", err)
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var customFields []integrationZendeskCustomFieldModel
+	for _, field := range integration.ConfigurationOptions.ZendeskConfigurationOptions.CustomFields {
+		customFields = append(customFields, integrationZendeskCustomFieldModel{
+			ID:    types.Int64Value(field.ID),
+			Value: types.StringValue(field.Value),
+		})
+	}
+
+	model := integrationZendeskResourceModel{
+		Mrn:          types.StringValue(integration.Mrn),
+		Name:         types.StringValue(integration.Name),
+		SpaceID:      types.StringValue(integration.SpaceID()),
+		Subdomain:    types.StringValue(integration.ConfigurationOptions.ZendeskConfigurationOptions.Subdomain),
+		Email:        types.StringValue(integration.ConfigurationOptions.ZendeskConfigurationOptions.Email),
+		AutoClose:    types.BoolValue(integration.ConfigurationOptions.ZendeskConfigurationOptions.AutoCloseTickets),
+		AutoCreate:   types.BoolValue(integration.ConfigurationOptions.ZendeskConfigurationOptions.AutoCreateTickets),
+		CustomFields: &customFields,
+		Credential: &integrationZendeskCredentialModel{
+			Token: types.StringValue(data.Credential.Token.ValueString()),
+		},
+	}
+
+	if integration.ConfigurationOptions.ZendeskConfigurationOptions.CustomFields == nil {
+		model.CustomFields = &[]integrationZendeskCustomFieldModel{}
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationZendeskResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
