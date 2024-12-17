@@ -4,9 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -56,8 +63,6 @@ type integrationAwsServerlessScanConfigurationModel struct {
 	// (Optional.)
 	CronScaninHours types.Int64 `tfsdk:"cron_scan_in_hours"`
 	// (Optional.)
-	EventScanTriggers *[]*integrationAwsServerlessAWSEventPatternModel `tfsdk:"event_scan_triggers"`
-	// (Optional.)
 	Ec2ScanOptions *integrationAwsServerlessEc2ScanModel `tfsdk:"ec2_scan_options"`
 	// (Optional.)
 	VpcConfiguration *integrationAwsServerlessVPCConfigurationModel `tfsdk:"vpc_configuration"`
@@ -67,15 +72,6 @@ type integrationAwsServerlessVPCConfigurationModel struct {
 	UseMondooVPC types.Bool `tfsdk:"use_mondoo_vpc"`
 	// (Optional.)
 	CIDR types.String `tfsdk:"cidr_block"`
-}
-
-type integrationAwsServerlessAWSEventPatternModel struct {
-	// (Required.)
-	ScanType types.String `tfsdk:"scan_type"`
-	// (Required.)
-	EventSource types.String `tfsdk:"event_source"`
-	// (Required.)
-	EventDetailType types.String `tfsdk:"event_detail_type"`
 }
 
 type integrationAwsServerlessEc2ScanModel struct {
@@ -182,8 +178,12 @@ func (m integrationAwsServerlessResourceModel) GetConfigurationOptions() *mondoo
 				ExcludedInstanceIDsFilter: &excludeInstanceIdsFilter,
 				ExcludedRegionsFilter:     &excludeRegionsFilter,
 				ExcludedTagsFilter:        &excludeTagsFilter,
-				EbsVolumeScan:             mondoov1.NewBooleanPtr(mondoov1.Boolean(m.ScanConfiguration.Ec2ScanOptions.EbsVolumeScan.ValueBool())),
-				InstanceConnect:           mondoov1.NewBooleanPtr(mondoov1.Boolean(m.ScanConfiguration.Ec2ScanOptions.InstanceConnect.ValueBool())),
+				EbsScanOptions: &mondoov1.EbsScanOptionsInput{
+					TargetInstancesPerScanner: mondoov1.NewIntPtr(mondoov1.Int(m.ScanConfiguration.Ec2ScanOptions.EbsScanOptions.TargetInstancesPerScanner.ValueInt64())),
+					MaxAsgInstances:           mondoov1.NewIntPtr(mondoov1.Int(m.ScanConfiguration.Ec2ScanOptions.EbsScanOptions.MaxAsgInstances.ValueInt64())),
+				},
+				EbsVolumeScan:   mondoov1.NewBooleanPtr(mondoov1.Boolean(m.ScanConfiguration.Ec2ScanOptions.EbsVolumeScan.ValueBool())),
+				InstanceConnect: mondoov1.NewBooleanPtr(mondoov1.Boolean(m.ScanConfiguration.Ec2ScanOptions.InstanceConnect.ValueBool())),
 			},
 		},
 	}
@@ -241,10 +241,14 @@ func (r *integrationAwsServerlessResource) Schema(ctx context.Context, req resou
 			"console_sign_in_trigger": schema.BoolAttribute{
 				MarkdownDescription: "Enable console sign in trigger.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"instance_state_change_trigger": schema.BoolAttribute{
 				MarkdownDescription: "Enable instance state change trigger.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"scan_configuration": schema.SingleNestedAttribute{
 				Required: true,
@@ -252,85 +256,168 @@ func (r *integrationAwsServerlessResource) Schema(ctx context.Context, req resou
 					"ec2_scan": schema.BoolAttribute{
 						MarkdownDescription: "Enable EC2 scan.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"ecr_scan": schema.BoolAttribute{
 						MarkdownDescription: "Enable ECR scan.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"ecs_scan": schema.BoolAttribute{
 						MarkdownDescription: "Enable ECS scan.",
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 					},
 					"cron_scan_in_hours": schema.Int64Attribute{
 						MarkdownDescription: "Cron scan in hours.",
 						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(0),
 					},
 					"vpc_configuration": schema.SingleNestedAttribute{
 						Optional: true,
+						Computed: true,
+						Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+							"use_mondoo_vpc": types.BoolType,
+							"cidr_block":     types.StringType,
+						}, map[string]attr.Value{
+							"use_mondoo_vpc": types.BoolValue(false),
+							"cidr_block":     types.StringValue("10.0.0.0/24"),
+						})),
 						Attributes: map[string]schema.Attribute{
 							"use_mondoo_vpc": schema.BoolAttribute{
 								MarkdownDescription: "Use Mondoo VPC.",
 								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
 							},
 							"cidr_block": schema.StringAttribute{
 								MarkdownDescription: "CIDR block for the Mondoo VPC.",
 								Optional:            true,
+								Computed:            true,
+								Default:             stringdefault.StaticString("10.0.0.0/24"),
 							},
 						},
 					},
 					"ec2_scan_options": schema.SingleNestedAttribute{
-						Required: true,
+						Optional: true, // Should be optional
+						Computed: true,
+						Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+							"ssm":                         types.BoolType,
+							"instance_ids_filter":         types.ListType{ElemType: types.StringType},
+							"regions_filter":              types.ListType{ElemType: types.StringType},
+							"tags_filter":                 types.MapType{ElemType: types.StringType},
+							"exclude_instance_ids_filter": types.ListType{ElemType: types.StringType},
+							"exclude_regions_filter":      types.ListType{ElemType: types.StringType},
+							"exclude_tags_filter":         types.MapType{ElemType: types.StringType},
+							"ebs_volume_scan":             types.BoolType,
+							"ebs_scan_options": types.ObjectType{
+								AttrTypes: map[string]attr.Type{
+									"target_instances_per_scanner": types.Int64Type,
+									"max_asg_instances":            types.Int64Type,
+								},
+							},
+							"instance_connect": types.BoolType,
+						}, map[string]attr.Value{
+							"ssm":                         types.BoolValue(false),
+							"instance_ids_filter":         types.ListValueMust(types.StringType, []attr.Value{}),
+							"regions_filter":              types.ListValueMust(types.StringType, []attr.Value{}),
+							"tags_filter":                 types.MapValueMust(types.StringType, make(map[string]attr.Value)),
+							"exclude_instance_ids_filter": types.ListValueMust(types.StringType, []attr.Value{}),
+							"exclude_regions_filter":      types.ListValueMust(types.StringType, []attr.Value{}),
+							"exclude_tags_filter":         types.MapValueMust(types.StringType, make(map[string]attr.Value)),
+							"ebs_volume_scan":             types.BoolValue(false),
+							"ebs_scan_options": types.ObjectValueMust(map[string]attr.Type{
+								"target_instances_per_scanner": types.Int64Type,
+								"max_asg_instances":            types.Int64Type,
+							}, map[string]attr.Value{
+								"target_instances_per_scanner": types.Int64Value(0),
+								"max_asg_instances":            types.Int64Value(0),
+							}),
+							"instance_connect": types.BoolValue(false),
+						})),
 						Attributes: map[string]schema.Attribute{
 							"ssm": schema.BoolAttribute{
 								MarkdownDescription: "Enable SSM.",
 								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
 							},
 							"instance_ids_filter": schema.ListAttribute{
 								MarkdownDescription: "List of instance IDs filter.",
 								Optional:            true,
+								Computed:            true,
+								Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 								ElementType:         types.StringType,
 							},
 							"regions_filter": schema.ListAttribute{
 								MarkdownDescription: "List of regions filter.",
 								Optional:            true,
+								Computed:            true,
+								Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 								ElementType:         types.StringType,
 							},
 							"tags_filter": schema.MapAttribute{
 								MarkdownDescription: "Tags filter.",
 								Optional:            true,
+								Computed:            true,
+								Default:             mapdefault.StaticValue(types.MapValueMust(types.StringType, make(map[string]attr.Value))),
 								ElementType:         types.StringType,
 							},
 							"exclude_instance_ids_filter": schema.ListAttribute{
 								MarkdownDescription: "List of instance IDs to exclude.",
 								Optional:            true,
+								Computed:            true,
+								Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 								ElementType:         types.StringType,
 							},
 							"exclude_regions_filter": schema.ListAttribute{
 								MarkdownDescription: "List of regions to exclude.",
 								Optional:            true,
+								Computed:            true,
+								Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 								ElementType:         types.StringType,
 							},
 							"exclude_tags_filter": schema.MapAttribute{
 								MarkdownDescription: "Excluded Tags filter.",
 								Optional:            true,
+								Computed:            true,
+								Default:             mapdefault.StaticValue(types.MapValueMust(types.StringType, make(map[string]attr.Value))),
 								ElementType:         types.StringType,
 							},
 							"ebs_volume_scan": schema.BoolAttribute{
 								MarkdownDescription: "Enable EBS volume scan.",
 								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
 							},
 							"ebs_scan_options": schema.SingleNestedAttribute{
-								Optional:           true,
+								Optional: true,
+								Computed: true,
+								Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+									"target_instances_per_scanner": types.Int64Type,
+									"max_asg_instances":            types.Int64Type,
+								}, map[string]attr.Value{
+									"target_instances_per_scanner": types.Int64Value(0),
+									"max_asg_instances":            types.Int64Value(0),
+								})),
 								DeprecationMessage: "This field is deprecated and will be removed in the future.",
 								Attributes: map[string]schema.Attribute{
 									"target_instances_per_scanner": schema.Int64Attribute{
 										MarkdownDescription: "Target instances per scanner.",
 										Optional:            true,
+										Computed:            true,
+										Default:             int64default.StaticInt64(0),
 										DeprecationMessage:  "This field is deprecated and will be removed in the future.",
 									},
 									"max_asg_instances": schema.Int64Attribute{
 										MarkdownDescription: "Max ASG instances.",
 										Optional:            true,
+										Computed:            true,
+										Default:             int64default.StaticInt64(0),
 										DeprecationMessage:  "This field is deprecated and will be removed in the future.",
 									},
 								},
@@ -338,23 +425,8 @@ func (r *integrationAwsServerlessResource) Schema(ctx context.Context, req resou
 							"instance_connect": schema.BoolAttribute{
 								MarkdownDescription: "Enable instance connect.",
 								Optional:            true,
-							},
-						},
-					},
-					"event_scan_triggers": schema.SingleNestedAttribute{
-						Optional: true,
-						Attributes: map[string]schema.Attribute{
-							"scan_type": schema.StringAttribute{
-								MarkdownDescription: "Scan type.",
-								Optional:            true,
-							},
-							"event_source": schema.StringAttribute{
-								MarkdownDescription: "Event source.",
-								Optional:            true,
-							},
-							"event_detail_type": schema.StringAttribute{
-								MarkdownDescription: "Event detail type.",
-								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
 							},
 						},
 					},
@@ -363,11 +435,15 @@ func (r *integrationAwsServerlessResource) Schema(ctx context.Context, req resou
 			"account_ids": schema.ListAttribute{
 				MarkdownDescription: "List of AWS account IDs.",
 				Optional:            true,
+				Computed:            true,
 				ElementType:         types.StringType,
+				Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"is_organization": schema.BoolAttribute{
 				MarkdownDescription: "Is organization.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -481,9 +557,63 @@ func (r *integrationAwsServerlessResource) Read(ctx context.Context, req resourc
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationAwsServerlessResourceModel{
+		Mrn:                        types.StringValue(integration.Mrn),
+		Name:                       types.StringValue(integration.Name),
+		SpaceID:                    types.StringValue(integration.SpaceID()),
+		Token:                      types.StringValue(data.Token.ValueString()),
+		ConsoleSignInTrigger:       types.BoolValue(false),
+		InstanceStateChangeTrigger: types.BoolValue(false),
+		Region:                     types.StringValue(integration.ConfigurationOptions.AWSConfigurationOptions.Region),
+		AccountIDs:                 ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.AccountIDs),
+		IsOrganization:             types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.IsOrganization),
+		ScanConfiguration: integrationAwsServerlessScanConfigurationModel{
+			Ec2Scan:         types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2Scan),
+			EcrScan:         types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EcrScan),
+			EcsScan:         types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EcsScan),
+			CronScaninHours: types.Int64Value(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.CronScaninHours),
+			Ec2ScanOptions: &integrationAwsServerlessEc2ScanModel{
+				Ssm:                      types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.Ssm),
+				InstanceIdsFilter:        ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.InstanceIDsFilter),
+				RegionsFilter:            ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.RegionsFilter),
+				TagsFilter:               ConvertMapValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.TagsFilter),
+				ExcludeInstanceIdsFilter: ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludedInstanceIDsFilter),
+				ExcludeRegionsFilter:     ConvertListValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludedRegionsFilter),
+				ExcludeTagsFilter:        ConvertMapValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.ExcludedTagsFilter),
+				EbsVolumeScan:            types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.EbsVolumeScan),
+				EbsScanOptions: &integrationAwsServerlessEbsScanModel{
+					TargetInstancesPerScanner: types.Int64Value(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.EbsScanOptions.TargetInstancesPerScanner),
+					MaxAsgInstances:           types.Int64Value(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.EbsScanOptions.MaxAsgInstances),
+				},
+				InstanceConnect: types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.Ec2ScanOptions.InstanceConnect),
+			},
+			VpcConfiguration: &integrationAwsServerlessVPCConfigurationModel{
+				UseMondooVPC: types.BoolValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.VpcConfiguration.UseMondooVPC),
+				CIDR:         types.StringValue(integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.VpcConfiguration.CIDR),
+			},
+		},
+	}
+
+	if integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EventScanTriggers != nil {
+		eventScanTriggers := integration.ConfigurationOptions.AWSConfigurationOptions.ScanConfiguration.EventScanTriggers
+		for _, item := range eventScanTriggers {
+			if item.EventSource == "aws.signin" {
+				model.ConsoleSignInTrigger = types.BoolValue(true)
+			}
+			if item.EventSource == "aws.ec2" {
+				model.InstanceStateChangeTrigger = types.BoolValue(true)
+			}
+		}
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationAwsServerlessResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

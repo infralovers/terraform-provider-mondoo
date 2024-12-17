@@ -21,6 +21,22 @@ func ConvertListValue(list []string) types.List {
 	return types.ListValueMust(types.StringType, valueList)
 }
 
+// ConvertMapValue converts a map of strings to a types.Map.
+func ConvertMapValue(m map[string]interface{}) types.Map {
+	var valueMap = make(map[string]attr.Value)
+	for key, value := range m {
+		switch v := value.(type) {
+		case string:
+			valueMap[key] = types.StringValue(v)
+		default:
+			// Handle other types if necessary
+			valueMap[key] = types.StringValue("")
+		}
+	}
+	// Ensure the map is of type types.StringType
+	return types.MapValueMust(types.StringType, valueMap)
+}
+
 // ConvertSliceStrings converts a types.List to a slice of strings.
 func ConvertSliceStrings(list types.List) (slice []mondoov1.String) {
 	ctx := context.Background()
