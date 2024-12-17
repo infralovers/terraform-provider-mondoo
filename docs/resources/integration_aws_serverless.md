@@ -114,17 +114,13 @@ resource "aws_cloudformation_stack" "mondoo_stack" {
 <a id="nestedatt--scan_configuration"></a>
 ### Nested Schema for `scan_configuration`
 
-Required:
-
-- `ec2_scan_options` (Attributes) (see [below for nested schema](#nestedatt--scan_configuration--ec2_scan_options))
-
 Optional:
 
 - `cron_scan_in_hours` (Number) Cron scan in hours.
 - `ec2_scan` (Boolean) Enable EC2 scan.
+- `ec2_scan_options` (Attributes) (see [below for nested schema](#nestedatt--scan_configuration--ec2_scan_options))
 - `ecr_scan` (Boolean) Enable ECR scan.
 - `ecs_scan` (Boolean) Enable ECS scan.
-- `event_scan_triggers` (Attributes) (see [below for nested schema](#nestedatt--scan_configuration--event_scan_triggers))
 - `vpc_configuration` (Attributes) (see [below for nested schema](#nestedatt--scan_configuration--vpc_configuration))
 
 <a id="nestedatt--scan_configuration--ec2_scan_options"></a>
@@ -151,16 +147,6 @@ Optional:
 - `max_asg_instances` (Number, Deprecated) Max ASG instances.
 - `target_instances_per_scanner` (Number, Deprecated) Target instances per scanner.
 
-
-
-<a id="nestedatt--scan_configuration--event_scan_triggers"></a>
-### Nested Schema for `scan_configuration.event_scan_triggers`
-
-Optional:
-
-- `event_detail_type` (String) Event detail type.
-- `event_source` (String) Event source.
-- `scan_type` (String) Scan type.
 
 
 <a id="nestedatt--scan_configuration--vpc_configuration"></a>
