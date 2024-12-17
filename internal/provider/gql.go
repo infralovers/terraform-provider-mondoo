@@ -582,7 +582,48 @@ type AWSConfigurationOptions struct {
 	ScanConfiguration ScanConfigurationInput
 	AccountIDs        []string
 	IsOrganization    bool
-	// V2Template bool
+	// V2Template        bool
+}
+
+type ScanConfigurationInput struct {
+	AccountScan       bool
+	Ec2Scan           bool `graphql:"ec2Scan"`
+	EcrScan           bool
+	EcsScan           bool
+	CronScaninHours   int64
+	EventScanTriggers []AWSEventPatternInput
+	Ec2ScanOptions    Ec2ScanOptionsInput `graphql:"ec2ScanOptions"`
+	VpcConfiguration  VPCConfigurationInput
+}
+
+type VPCConfigurationInput struct {
+	UseDefaultVPC bool   `graphql:"useDefaultVPC"`
+	UseMondooVPC  bool   `graphql:"useMondooVPC"`
+	CIDR          string `graphql:"CIDR"`
+}
+
+type AWSEventPatternInput struct {
+	ScanType        string
+	EventSource     string
+	EventDetailType string
+}
+
+type Ec2ScanOptionsInput struct {
+	Ssm                       bool
+	InstanceIDsFilter         []string
+	RegionsFilter             []string
+	TagsFilter                map[string]interface{}
+	EbsVolumeScan             bool
+	EbsScanOptions            EbsScanOptionsInput
+	InstanceConnect           bool
+	ExcludedInstanceIDsFilter []string
+	ExcludedRegionsFilter     []string
+	ExcludedTagsFilter        map[string]interface{}
+}
+
+type EbsScanOptionsInput struct {
+	TargetInstancesPerScanner int64
+	MaxAsgInstances           int64
 }
 
 type SlackConfigurationOptions struct {

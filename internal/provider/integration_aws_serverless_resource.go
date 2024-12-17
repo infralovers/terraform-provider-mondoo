@@ -32,8 +32,8 @@ type integrationAwsServerlessResourceModel struct {
 	Name  types.String `tfsdk:"name"`
 	Token types.String `tfsdk:"token"`
 
-	Region            types.String           `tfsdk:"region"`
-	ScanConfiguration ScanConfigurationInput `tfsdk:"scan_configuration"`
+	Region            types.String                                   `tfsdk:"region"`
+	ScanConfiguration integrationAwsServerlessScanConfigurationModel `tfsdk:"scan_configuration"`
 
 	// (Optional.)
 	AccountIDs types.List `tfsdk:"account_ids"`
@@ -46,7 +46,7 @@ type integrationAwsServerlessResourceModel struct {
 	InstanceStateChangeTrigger types.Bool `tfsdk:"instance_state_change_trigger"`
 }
 
-type ScanConfigurationInput struct {
+type integrationAwsServerlessScanConfigurationModel struct {
 	// (Optional.)
 	Ec2Scan types.Bool `tfsdk:"ec2_scan"`
 	// (Optional.)
@@ -56,20 +56,20 @@ type ScanConfigurationInput struct {
 	// (Optional.)
 	CronScaninHours types.Int64 `tfsdk:"cron_scan_in_hours"`
 	// (Optional.)
-	EventScanTriggers *[]*AWSEventPatternInput `tfsdk:"event_scan_triggers"`
+	EventScanTriggers *[]*integrationAwsServerlessAWSEventPatternModel `tfsdk:"event_scan_triggers"`
 	// (Optional.)
-	Ec2ScanOptions *Ec2ScanOptionsInput `tfsdk:"ec2_scan_options"`
+	Ec2ScanOptions *integrationAwsServerlessEc2ScanModel `tfsdk:"ec2_scan_options"`
 	// (Optional.)
-	VpcConfiguration *VPCConfigurationInput `tfsdk:"vpc_configuration"`
+	VpcConfiguration *integrationAwsServerlessVPCConfigurationModel `tfsdk:"vpc_configuration"`
 }
 
-type VPCConfigurationInput struct {
+type integrationAwsServerlessVPCConfigurationModel struct {
 	UseMondooVPC types.Bool `tfsdk:"use_mondoo_vpc"`
 	// (Optional.)
 	CIDR types.String `tfsdk:"cidr_block"`
 }
 
-type AWSEventPatternInput struct {
+type integrationAwsServerlessAWSEventPatternModel struct {
 	// (Required.)
 	ScanType types.String `tfsdk:"scan_type"`
 	// (Required.)
@@ -78,7 +78,7 @@ type AWSEventPatternInput struct {
 	EventDetailType types.String `tfsdk:"event_detail_type"`
 }
 
-type Ec2ScanOptionsInput struct {
+type integrationAwsServerlessEc2ScanModel struct {
 	// (Optional.)
 	Ssm types.Bool `tfsdk:"ssm"`
 	// (Optional.)
@@ -96,12 +96,12 @@ type Ec2ScanOptionsInput struct {
 	// (Optional.)
 	EbsVolumeScan types.Bool `tfsdk:"ebs_volume_scan"`
 	// (Optional.)
-	EbsScanOptions *EbsScanOptionsInput `tfsdk:"ebs_scan_options"`
+	EbsScanOptions *integrationAwsServerlessEbsScanModel `tfsdk:"ebs_scan_options"`
 	// (Optional.)
 	InstanceConnect types.Bool `tfsdk:"instance_connect"`
 }
 
-type EbsScanOptionsInput struct {
+type integrationAwsServerlessEbsScanModel struct {
 	// (Optional.)
 	TargetInstancesPerScanner types.Int64 `tfsdk:"target_instances_per_scanner"`
 	// (Optional.)

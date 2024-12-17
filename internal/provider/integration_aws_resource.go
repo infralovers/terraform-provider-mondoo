@@ -222,6 +222,16 @@ func (r *integrationAwsResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
+	// trigger integration to gather results quickly after the first setup
+	// NOTE: we ignore the error since the integration state does not depend on it
+	_, err = r.client.TriggerAction(ctx, string(integration.Mrn), mondoov1.ActionTypeRunScan)
+	if err != nil {
+		resp.Diagnostics.
+			AddWarning("Client Error",
+				fmt.Sprintf("Unable to trigger integration, got error: %s", err),
+			)
+	}
+
 	// Save space mrn into the Terraform state.
 	data.Mrn = types.StringValue(string(integration.Mrn))
 	data.Name = types.StringValue(string(integration.Name))
@@ -249,19 +259,23 @@ func (r *integrationAwsResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	model := integrationAwsResourceModel{
-		SpaceID: types.StringValue(integration.SpaceID()),
-		Mrn:     types.StringValue(integration.Mrn),
-		Name:    types.StringValue(integration.Name),
-		Credential: integrationAwsCredentialModel{
-			Role: &roleCredentialModel{
-				RoleArn:    types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.Role),
-				ExternalId: types.StringValue(data.Credential.Role.ExternalId.ValueString()),
-			},
-			Key: &accessKeyCredentialModel{
-				AccessKey: types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.AccessKeyId),
-				SecretKey: types.StringValue(data.Credential.Key.SecretKey.ValueString()),
-			},
-		},
+		SpaceID:    types.StringValue(integration.SpaceID()),
+		Mrn:        types.StringValue(integration.Mrn),
+		Name:       types.StringValue(integration.Name),
+		Credential: integrationAwsCredentialModel{},
+	}
+
+	if data.Credential.Role != nil && data.Credential.Role.ExternalId.ValueStringPointer() != nil {
+		model.Credential.Role = &roleCredentialModel{
+			RoleArn:    types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.Role),
+			ExternalId: types.StringValue(data.Credential.Role.ExternalId.ValueString()),
+		}
+	}
+	if data.Credential.Key != nil && data.Credential.Key.SecretKey.ValueStringPointer() != nil {
+		model.Credential.Key = &accessKeyCredentialModel{
+			AccessKey: types.StringValue(integration.ConfigurationOptions.HostedAwsConfigurationOptions.AccessKeyId),
+			SecretKey: types.StringValue(data.Credential.Key.SecretKey.ValueString()),
+		}
 	}
 
 	// Save updated data into Terraform state
