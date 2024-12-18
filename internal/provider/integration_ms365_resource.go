@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -44,8 +46,60 @@ type integrationMs365CredentialModel struct {
 	PEMFile types.String `tfsdk:"pem_file"`
 }
 
+func (m integrationMs365ResourceModel) GetConfigurationOptions() *mondoov1.Ms365ConfigurationOptionsInput {
+	opts := &mondoov1.Ms365ConfigurationOptionsInput{
+		TenantID:    mondoov1.String(m.TenantId.ValueString()),
+		ClientID:    mondoov1.String(m.ClientId.ValueString()),
+		Certificate: mondoov1.NewStringPtr(mondoov1.String(m.Credential.PEMFile.ValueString())),
+	}
+
+	return opts
+}
+
 func (r *integrationMs365Resource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_integration_ms365"
+}
+
+// NotEqualValidator ensures two string attributes are not equal.
+type NotEqualValidator struct {
+	OtherAttribute string
+}
+
+// ValidateString performs the validation.
+func (v NotEqualValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Retrieve the value of the other attribute
+	var otherAttr types.String
+	diags := req.Config.GetAttribute(ctx, path.Root(v.OtherAttribute), &otherAttr)
+	if diags.HasError() || otherAttr.IsNull() || otherAttr.IsUnknown() {
+		// Skip validation if the other attribute is not set
+		return
+	}
+
+	// Check if the values of the two attributes are equal
+	if req.ConfigValue.ValueString() == otherAttr.ValueString() {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Attributes Cannot Be Equal",
+			fmt.Sprintf("The value of '%s' cannot be the same as '%s'.", req.Path.String(), v.OtherAttribute),
+		)
+	}
+}
+
+// Description returns a plain-text description of the validator's purpose.
+func (v NotEqualValidator) Description(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// MarkdownDescription returns a markdown-formatted description of the validator's purpose.
+func (v NotEqualValidator) MarkdownDescription(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// NewNotEqualValidator is a convenience function to create an instance of the validator.
+func NewNotEqualValidator(otherAttribute string) validator.String {
+	return &NotEqualValidator{
+		OtherAttribute: otherAttribute,
+	}
 }
 
 func (r *integrationMs365Resource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -77,10 +131,18 @@ func (r *integrationMs365Resource) Schema(ctx context.Context, req resource.Sche
 			"client_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Client ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Client ID must be a valid GUID."),
+					NewNotEqualValidator("tenant_id"),
+				},
 			},
 			"tenant_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Tenant ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Tenant ID must be a valid GUID."),
+					NewNotEqualValidator("client_id"),
+				},
 			},
 			"credentials": schema.SingleNestedAttribute{
 				Required: true,
@@ -141,11 +203,7 @@ func (r *integrationMs365Resource) Create(ctx context.Context, req resource.Crea
 		data.Name.ValueString(),
 		mondoov1.ClientIntegrationTypeMs365,
 		mondoov1.ClientIntegrationConfigurationInput{
-			Ms365ConfigurationOptions: &mondoov1.Ms365ConfigurationOptionsInput{
-				TenantID:    mondoov1.String(data.TenantId.ValueString()),
-				ClientID:    mondoov1.String(data.ClientId.ValueString()),
-				Certificate: mondoov1.NewStringPtr(mondoov1.String(data.Credential.PEMFile.ValueString())),
-			},
+			Ms365ConfigurationOptions: data.GetConfigurationOptions(),
 		})
 	if err != nil {
 		resp.Diagnostics.
@@ -163,7 +221,6 @@ func (r *integrationMs365Resource) Create(ctx context.Context, req resource.Crea
 			AddWarning("Client Error",
 				fmt.Sprintf("Unable to trigger integration, got error: %s", err),
 			)
-		return
 	}
 
 	// Save space mrn into the Terraform state.
@@ -186,9 +243,25 @@ func (r *integrationMs365Resource) Read(ctx context.Context, req resource.ReadRe
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationMs365ResourceModel{
+		Mrn:      types.StringValue(integration.Mrn),
+		Name:     types.StringValue(integration.Name),
+		SpaceID:  types.StringValue(integration.SpaceID()),
+		TenantId: types.StringValue(integration.ConfigurationOptions.Ms365ConfigurationOptions.TenantId),
+		ClientId: types.StringValue(integration.ConfigurationOptions.Ms365ConfigurationOptions.ClientId),
+		Credential: integrationMs365CredentialModel{
+			PEMFile: types.StringValue(data.Credential.PEMFile.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationMs365Resource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -203,11 +276,7 @@ func (r *integrationMs365Resource) Update(ctx context.Context, req resource.Upda
 
 	// Do GraphQL request to API to update the resource.
 	opts := mondoov1.ClientIntegrationConfigurationInput{
-		Ms365ConfigurationOptions: &mondoov1.Ms365ConfigurationOptionsInput{
-			TenantID:    mondoov1.String(data.TenantId.ValueString()),
-			ClientID:    mondoov1.String(data.ClientId.ValueString()),
-			Certificate: mondoov1.NewStringPtr(mondoov1.String(data.Credential.PEMFile.ValueString())),
-		},
+		Ms365ConfigurationOptions: data.GetConfigurationOptions(),
 	}
 
 	_, err := r.client.UpdateIntegration(ctx,
