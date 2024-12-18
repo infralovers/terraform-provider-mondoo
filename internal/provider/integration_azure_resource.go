@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -51,8 +52,73 @@ type integrationAzureCredentialModel struct {
 	PEMFile types.String `tfsdk:"pem_file"`
 }
 
+func (m integrationAzureResourceModel) GetConfigurationOptions() *mondoov1.AzureConfigurationOptionsInput {
+
+	ctx := context.Background()
+	var listAllow []mondoov1.String
+	allowlist, _ := m.SubscriptionAllowList.ToListValue(ctx)
+	allowlist.ElementsAs(ctx, &listAllow, true)
+
+	var listDeny []mondoov1.String
+	denylist, _ := m.SubscriptionDenyList.ToListValue(ctx)
+	denylist.ElementsAs(ctx, &listDeny, true)
+
+	opts := &mondoov1.AzureConfigurationOptionsInput{
+		TenantID:               mondoov1.String(m.TenantId.ValueString()),
+		ClientID:               mondoov1.String(m.ClientId.ValueString()),
+		SubscriptionsAllowlist: &listAllow,
+		SubscriptionsDenylist:  &listDeny,
+		ScanVms:                mondoov1.NewBooleanPtr(mondoov1.Boolean(m.ScanVms.ValueBool())),
+		Certificate:            mondoov1.NewStringPtr(mondoov1.String(m.Credential.PEMFile.ValueString())),
+	}
+
+	return opts
+}
+
 func (r *integrationAzureResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_integration_azure"
+}
+
+// NotEqualValidator ensures two string attributes are not equal.
+type NotEqualValidator struct {
+	OtherAttribute string
+}
+
+// ValidateString performs the validation.
+func (v NotEqualValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Retrieve the value of the other attribute
+	var otherAttr types.String
+	diags := req.Config.GetAttribute(ctx, path.Root(v.OtherAttribute), &otherAttr)
+	if diags.HasError() || otherAttr.IsNull() || otherAttr.IsUnknown() {
+		// Skip validation if the other attribute is not set
+		return
+	}
+
+	// Check if the values of the two attributes are equal
+	if req.ConfigValue.ValueString() == otherAttr.ValueString() {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Attributes Cannot Be Equal",
+			fmt.Sprintf("The value of '%s' cannot be the same as '%s'.", req.Path.String(), v.OtherAttribute),
+		)
+	}
+}
+
+// Description returns a plain-text description of the validator's purpose.
+func (v NotEqualValidator) Description(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// MarkdownDescription returns a markdown-formatted description of the validator's purpose.
+func (v NotEqualValidator) MarkdownDescription(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// NewNotEqualValidator is a convenience function to create an instance of the validator.
+func NewNotEqualValidator(otherAttribute string) validator.String {
+	return &NotEqualValidator{
+		OtherAttribute: otherAttribute,
+	}
 }
 
 func (r *integrationAzureResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -84,10 +150,18 @@ func (r *integrationAzureResource) Schema(ctx context.Context, req resource.Sche
 			"client_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Client ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Client ID must be a valid GUID."),
+					NewNotEqualValidator("tenant_id"),
+				},
 			},
 			"tenant_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Tenant ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Tenant ID must be a valid GUID."),
+					NewNotEqualValidator("client_id"),
+				},
 			},
 			"scan_vms": schema.BoolAttribute{
 				MarkdownDescription: "Scan VMs.",
@@ -174,37 +248,13 @@ func (r *integrationAzureResource) Create(ctx context.Context, req resource.Crea
 	ctx = tflog.SetField(ctx, "space_mrn", space.MRN())
 
 	// Do GraphQL request to API to create the resource.
-	var listAllow []mondoov1.String
-	allowlist, _ := data.SubscriptionAllowList.ToListValue(ctx)
-	allowlist.ElementsAs(ctx, &listAllow, true)
-
-	var listDeny []mondoov1.String
-	denylist, _ := data.SubscriptionDenyList.ToListValue(ctx)
-	denylist.ElementsAs(ctx, &listDeny, true)
-
-	// Check if both whitelist and blacklist are provided
-	if len(listDeny) > 0 && len(listAllow) > 0 {
-		resp.Diagnostics.
-			AddError("ConflictingAttributesError",
-				"Both subscription_allow_list and subscription_deny_list cannot be provided simultaneously.",
-			)
-		return
-	}
-
 	tflog.Debug(ctx, "Creating integration")
 	integration, err := r.client.CreateIntegration(ctx,
 		space.MRN(),
 		data.Name.ValueString(),
 		mondoov1.ClientIntegrationTypeAzure,
 		mondoov1.ClientIntegrationConfigurationInput{
-			AzureConfigurationOptions: &mondoov1.AzureConfigurationOptionsInput{
-				TenantID:               mondoov1.String(data.TenantId.ValueString()),
-				ClientID:               mondoov1.String(data.ClientId.ValueString()),
-				SubscriptionsWhitelist: &listAllow,
-				SubscriptionsBlacklist: &listDeny,
-				ScanVms:                mondoov1.NewBooleanPtr(mondoov1.Boolean(data.ScanVms.ValueBool())),
-				Certificate:            mondoov1.NewStringPtr(mondoov1.String(data.Credential.PEMFile.ValueString())),
-			},
+			AzureConfigurationOptions: data.GetConfigurationOptions(),
 		})
 	if err != nil {
 		resp.Diagnostics.
@@ -222,7 +272,6 @@ func (r *integrationAzureResource) Create(ctx context.Context, req resource.Crea
 			AddWarning("Client Error",
 				fmt.Sprintf("Unable to trigger integration, got error: %s", err),
 			)
-		return
 	}
 
 	// Save space mrn into the Terraform state.
@@ -280,32 +329,8 @@ func (r *integrationAzureResource) Update(ctx context.Context, req resource.Upda
 	}
 
 	// Do GraphQL request to API to update the resource.
-	var listAllow []mondoov1.String
-	allowlist, _ := data.SubscriptionAllowList.ToListValue(ctx)
-	allowlist.ElementsAs(ctx, &listAllow, true)
-
-	var listDeny []mondoov1.String
-	denylist, _ := data.SubscriptionDenyList.ToListValue(ctx)
-	denylist.ElementsAs(ctx, &listDeny, true)
-
-	// Check if both whitelist and blacklist are provided
-	if len(listDeny) > 0 && len(listAllow) > 0 {
-		resp.Diagnostics.
-			AddError("ConflictingAttributesError",
-				"Both subscription_allow_list and subscription_deny_list cannot be provided simultaneously.",
-			)
-		return
-	}
-
 	opts := mondoov1.ClientIntegrationConfigurationInput{
-		AzureConfigurationOptions: &mondoov1.AzureConfigurationOptionsInput{
-			TenantID:               mondoov1.String(data.TenantId.ValueString()),
-			ClientID:               mondoov1.String(data.ClientId.ValueString()),
-			SubscriptionsWhitelist: &listAllow,
-			SubscriptionsBlacklist: &listDeny,
-			ScanVms:                mondoov1.NewBooleanPtr(mondoov1.Boolean(data.ScanVms.ValueBool())),
-			Certificate:            mondoov1.NewStringPtr(mondoov1.String(data.Credential.PEMFile.ValueString())),
-		},
+		AzureConfigurationOptions: data.GetConfigurationOptions(),
 	}
 
 	_, err := r.client.UpdateIntegration(ctx,
