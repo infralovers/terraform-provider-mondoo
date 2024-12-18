@@ -53,6 +53,18 @@ type integrationOciCredentialModel struct {
 	PrivateKey  types.String `tfsdk:"private_key"`
 }
 
+func (m integrationOciTenantResourceModel) GetConfigurationOptions() *mondoov1.OciConfigurationOptionsInput {
+	opts := &mondoov1.OciConfigurationOptionsInput{
+		TenancyOcid: mondoov1.String(m.Tenancy.ValueString()),
+		UserOcid:    mondoov1.String(m.User.ValueString()),
+		Region:      mondoov1.String(m.Region.ValueString()),
+		Fingerprint: mondoov1.String(m.Credential.Fingerprint.ValueString()),
+		PrivateKey:  mondoov1.NewStringPtr(mondoov1.String(m.Credential.PrivateKey.ValueString())),
+	}
+
+	return opts
+}
+
 func (r *integrationOciTenantResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_integration_oci_tenant"
 }
@@ -61,7 +73,6 @@ func (r *integrationOciTenantResource) Schema(ctx context.Context, req resource.
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Example resource",
-
 		Attributes: map[string]schema.Attribute{
 			"space_id": schema.StringAttribute{
 				MarkdownDescription: "Mondoo Space Identifier. If it is not provided, the provider space is used.",
@@ -158,13 +169,7 @@ func (r *integrationOciTenantResource) Create(ctx context.Context, req resource.
 		data.Name.ValueString(),
 		mondoov1.ClientIntegrationTypeOci,
 		mondoov1.ClientIntegrationConfigurationInput{
-			OciConfigurationOptions: &mondoov1.OciConfigurationOptionsInput{
-				TenancyOcid: mondoov1.String(data.Tenancy.ValueString()),
-				UserOcid:    mondoov1.String(data.User.ValueString()),
-				Region:      mondoov1.String(data.Region.ValueString()),
-				Fingerprint: mondoov1.String(data.Credential.Fingerprint.ValueString()),
-				PrivateKey:  mondoov1.NewStringPtr(mondoov1.String(data.Credential.PrivateKey.ValueString())),
-			},
+			OciConfigurationOptions: data.GetConfigurationOptions(),
 		})
 	if err != nil {
 		resp.Diagnostics.
@@ -182,7 +187,6 @@ func (r *integrationOciTenantResource) Create(ctx context.Context, req resource.
 			AddWarning("Client Error",
 				fmt.Sprintf("Unable to trigger integration, got error: %s", err),
 			)
-		return
 	}
 
 	// Save space mrn into the Terraform state.
@@ -204,11 +208,28 @@ func (r *integrationOciTenantResource) Read(ctx context.Context, req resource.Re
 		return
 	}
 
-	// Write logs using the tflog package
-	tflog.Trace(ctx, "read a OCI integration resource")
+	// Do GraphQL request to API to get the resource.
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationOciTenantResourceModel{
+		Mrn:     types.StringValue(integration.Mrn),
+		Name:    types.StringValue(integration.Name),
+		SpaceID: types.StringValue(integration.SpaceID()),
+		Tenancy: types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.TenancyOcid),
+		Region:  types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.Region),
+		User:    types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.UserOcid),
+		Credential: integrationOciCredentialModel{
+			Fingerprint: types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.Fingerprint),
+			PrivateKey:  types.StringValue(data.Credential.PrivateKey.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationOciTenantResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -222,13 +243,7 @@ func (r *integrationOciTenantResource) Update(ctx context.Context, req resource.
 	}
 
 	opts := mondoov1.ClientIntegrationConfigurationInput{
-		OciConfigurationOptions: &mondoov1.OciConfigurationOptionsInput{
-			TenancyOcid: mondoov1.String(data.Tenancy.ValueString()),
-			UserOcid:    mondoov1.String(data.User.ValueString()),
-			Region:      mondoov1.String(data.Region.ValueString()),
-			Fingerprint: mondoov1.String(data.Credential.Fingerprint.ValueString()),
-			PrivateKey:  mondoov1.NewStringPtr(mondoov1.String(data.Credential.PrivateKey.ValueString())),
-		},
+		OciConfigurationOptions: data.GetConfigurationOptions(),
 	}
 
 	// Do GraphQL request to API to update the resource.
@@ -299,6 +314,13 @@ func (r *integrationOciTenantResource) ImportState(ctx context.Context, req reso
 		Mrn:     types.StringValue(integration.Mrn),
 		Name:    types.StringValue(integration.Name),
 		SpaceID: types.StringValue(spaceID),
+		Tenancy: types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.TenancyOcid),
+		Region:  types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.Region),
+		User:    types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.UserOcid),
+		Credential: integrationOciCredentialModel{
+			Fingerprint: types.StringValue(integration.ConfigurationOptions.OciConfigurationOptions.Fingerprint),
+			PrivateKey:  types.StringPointerValue(nil),
+		},
 	}
 
 	resp.State.Set(ctx, &model)
