@@ -59,7 +59,7 @@ provider "mondoo" {
 }
 
 # Setup the GCP integration
-resource "mondoo_integration_gcp" "name" {
+resource "mondoo_integration_gcp" "gcp_integration" {
   name       = "GCP ${data.google_project.project.name}"
   project_id = data.google_project.project.project_id
   credentials = {
@@ -78,6 +78,7 @@ resource "mondoo_integration_gcp" "name" {
 
 ### Optional
 
+- `organization_id` (String) GCP organization id
 - `project_id` (String) GCP project id
 - `space_id` (String) Mondoo Space Identifier. If it is not provided, the provider space is used.
 

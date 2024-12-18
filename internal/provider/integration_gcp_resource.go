@@ -8,9 +8,11 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -33,9 +35,10 @@ type integrationGcpResourceModel struct {
 	SpaceID types.String `tfsdk:"space_id"`
 
 	// integration details
-	Mrn       types.String `tfsdk:"mrn"`
-	Name      types.String `tfsdk:"name"`
-	ProjectID types.String `tfsdk:"project_id"`
+	Mrn            types.String `tfsdk:"mrn"`
+	Name           types.String `tfsdk:"name"`
+	ProjectID      types.String `tfsdk:"project_id"`
+	OrganizationID types.String `tfsdk:"organization_id"`
 
 	// credentials
 	Credential integrationGcpCredentialModel `tfsdk:"credentials"`
@@ -43,6 +46,17 @@ type integrationGcpResourceModel struct {
 
 type integrationGcpCredentialModel struct {
 	PrivateKey types.String `tfsdk:"private_key"`
+}
+
+func (m integrationGcpResourceModel) GetConfigurationOptions() *mondoov1.GcpConfigurationOptionsInput {
+	opts := &mondoov1.GcpConfigurationOptionsInput{
+		ProjectID:      mondoov1.NewStringPtr(mondoov1.String(m.ProjectID.ValueString())),
+		OrganizationID: mondoov1.NewStringPtr(mondoov1.String(m.OrganizationID.ValueString())),
+		ServiceAccount: mondoov1.NewStringPtr(mondoov1.String(m.Credential.PrivateKey.ValueString())),
+		DiscoverAll:    mondoov1.NewBooleanPtr(mondoov1.Boolean(true)),
+	}
+
+	return opts
 }
 
 func (r *integrationGcpResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -78,6 +92,20 @@ func (r *integrationGcpResource) Schema(ctx context.Context, req resource.Schema
 			"project_id": schema.StringAttribute{
 				MarkdownDescription: "GCP project id",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
+				Validators: []validator.String{
+					stringvalidator.ExactlyOneOf(path.MatchRoot("project_id"), path.MatchRoot("organization_id")),
+				},
+			},
+			"organization_id": schema.StringAttribute{
+				MarkdownDescription: "GCP organization id",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
+				Validators: []validator.String{
+					stringvalidator.ExactlyOneOf(path.MatchRoot("project_id"), path.MatchRoot("organization_id")),
+				},
 			},
 			"credentials": schema.SingleNestedAttribute{
 				Required: true,
@@ -137,11 +165,7 @@ func (r *integrationGcpResource) Create(ctx context.Context, req resource.Create
 		data.Name.ValueString(),
 		mondoov1.ClientIntegrationTypeGcp,
 		mondoov1.ClientIntegrationConfigurationInput{
-			GcpConfigurationOptions: &mondoov1.GcpConfigurationOptionsInput{
-				ProjectID:      mondoov1.NewStringPtr(mondoov1.String(data.ProjectID.ValueString())),
-				ServiceAccount: mondoov1.NewStringPtr(mondoov1.String(data.Credential.PrivateKey.ValueString())),
-				DiscoverAll:    mondoov1.NewBooleanPtr(mondoov1.Boolean(true)),
-			},
+			GcpConfigurationOptions: data.GetConfigurationOptions(),
 		})
 	if err != nil {
 		resp.Diagnostics.
@@ -159,7 +183,6 @@ func (r *integrationGcpResource) Create(ctx context.Context, req resource.Create
 			AddWarning("Client Error",
 				fmt.Sprintf("Unable to trigger integration, got error: %s", err),
 			)
-		return
 	}
 
 	// Save space mrn into the Terraform state.
@@ -182,9 +205,25 @@ func (r *integrationGcpResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationGcpResourceModel{
+		Mrn:            types.StringValue(integration.Mrn),
+		Name:           types.StringValue(integration.Name),
+		SpaceID:        types.StringValue(integration.SpaceID()),
+		ProjectID:      types.StringValue(integration.ConfigurationOptions.GcpConfigurationOptions.ProjectId),
+		OrganizationID: types.StringValue(integration.ConfigurationOptions.GcpConfigurationOptions.OrganizationId),
+		Credential: integrationGcpCredentialModel{
+			PrivateKey: types.StringValue(data.Credential.PrivateKey.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationGcpResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -199,11 +238,7 @@ func (r *integrationGcpResource) Update(ctx context.Context, req resource.Update
 
 	// Do GraphQL request to API to update the resource.
 	opts := mondoov1.ClientIntegrationConfigurationInput{
-		GcpConfigurationOptions: &mondoov1.GcpConfigurationOptionsInput{
-			ProjectID:      mondoov1.NewStringPtr(mondoov1.String(data.ProjectID.ValueString())),
-			ServiceAccount: mondoov1.NewStringPtr(mondoov1.String(data.Credential.PrivateKey.ValueString())),
-			DiscoverAll:    mondoov1.NewBooleanPtr(mondoov1.Boolean(true)),
-		},
+		GcpConfigurationOptions: data.GetConfigurationOptions(),
 	}
 
 	_, err := r.client.UpdateIntegration(ctx,
@@ -253,10 +288,11 @@ func (r *integrationGcpResource) ImportState(ctx context.Context, req resource.I
 	}
 
 	model := integrationGcpResourceModel{
-		Mrn:       types.StringValue(integration.Mrn),
-		Name:      types.StringValue(integration.Name),
-		SpaceID:   types.StringValue(integration.SpaceID()),
-		ProjectID: types.StringValue(integration.ConfigurationOptions.GcpConfigurationOptions.ProjectId),
+		Mrn:            types.StringValue(integration.Mrn),
+		Name:           types.StringValue(integration.Name),
+		SpaceID:        types.StringValue(integration.SpaceID()),
+		ProjectID:      types.StringValue(integration.ConfigurationOptions.GcpConfigurationOptions.ProjectId),
+		OrganizationID: types.StringValue(integration.ConfigurationOptions.GcpConfigurationOptions.OrganizationId),
 		Credential: integrationGcpCredentialModel{
 			PrivateKey: types.StringPointerValue(nil),
 		},

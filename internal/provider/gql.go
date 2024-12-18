@@ -609,8 +609,9 @@ type HostedAwsConfigurationOptions struct {
 }
 
 type GcpConfigurationOptions struct {
-	ProjectId   string
-	DiscoverAll bool
+	ProjectId      string
+	OrganizationId string
+	DiscoverAll    bool
 }
 
 type ShodanConfigurationOptions struct {
