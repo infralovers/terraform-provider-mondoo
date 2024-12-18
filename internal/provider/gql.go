@@ -651,7 +651,7 @@ type EmailRecipient struct {
 	ReferenceURL string
 }
 
-type MicrosoftDefenderConfigurationOptionsInput struct {
+type MicrosoftDefenderConfigurationOptions struct {
 	TenantId               string
 	ClientId               string
 	SubscriptionsAllowlist []string
@@ -659,19 +659,19 @@ type MicrosoftDefenderConfigurationOptionsInput struct {
 }
 
 type ClientIntegrationConfigurationOptions struct {
-	AzureConfigurationOptions                  AzureConfigurationOptions                  `graphql:"... on AzureConfigurationOptions"`
-	HostConfigurationOptions                   HostConfigurationOptions                   `graphql:"... on HostConfigurationOptions"`
-	Ms365ConfigurationOptions                  Ms365ConfigurationOptions                  `graphql:"... on Ms365ConfigurationOptions"`
-	GcpConfigurationOptions                    GcpConfigurationOptions                    `graphql:"... on GcpConfigurationOptions"`
-	SlackConfigurationOptions                  SlackConfigurationOptions                  `graphql:"... on SlackConfigurationOptions"`
-	GithubConfigurationOptions                 GithubConfigurationOptions                 `graphql:"... on GithubConfigurationOptions"`
-	HostedAwsConfigurationOptions              HostedAwsConfigurationOptions              `graphql:"... on HostedAwsConfigurationOptions"`
-	ShodanConfigurationOptions                 ShodanConfigurationOptions                 `graphql:"... on ShodanConfigurationOptions"`
-	ZendeskConfigurationOptions                ZendeskConfigurationOptions                `graphql:"... on ZendeskConfigurationOptions"`
-	JiraConfigurationOptions                   JiraConfigurationOptions                   `graphql:"... on JiraConfigurationOptions"`
-	EmailConfigurationOptions                  EmailConfigurationOptions                  `graphql:"... on EmailConfigurationOptions"`
-	GitlabConfigurationOptions                 GitlabConfigurationOptions                 `graphql:"... on GitlabConfigurationOptions"`
-	MicrosoftDefenderConfigurationOptionsInput MicrosoftDefenderConfigurationOptionsInput `graphql:"... on MicrosoftDefenderConfigurationOptions"`
+	AzureConfigurationOptions             AzureConfigurationOptions             `graphql:"... on AzureConfigurationOptions"`
+	HostConfigurationOptions              HostConfigurationOptions              `graphql:"... on HostConfigurationOptions"`
+	Ms365ConfigurationOptions             Ms365ConfigurationOptions             `graphql:"... on Ms365ConfigurationOptions"`
+	GcpConfigurationOptions               GcpConfigurationOptions               `graphql:"... on GcpConfigurationOptions"`
+	SlackConfigurationOptions             SlackConfigurationOptions             `graphql:"... on SlackConfigurationOptions"`
+	GithubConfigurationOptions            GithubConfigurationOptions            `graphql:"... on GithubConfigurationOptions"`
+	HostedAwsConfigurationOptions         HostedAwsConfigurationOptions         `graphql:"... on HostedAwsConfigurationOptions"`
+	ShodanConfigurationOptions            ShodanConfigurationOptions            `graphql:"... on ShodanConfigurationOptions"`
+	ZendeskConfigurationOptions           ZendeskConfigurationOptions           `graphql:"... on ZendeskConfigurationOptions"`
+	JiraConfigurationOptions              JiraConfigurationOptions              `graphql:"... on JiraConfigurationOptions"`
+	EmailConfigurationOptions             EmailConfigurationOptions             `graphql:"... on EmailConfigurationOptions"`
+	GitlabConfigurationOptions            GitlabConfigurationOptions            `graphql:"... on GitlabConfigurationOptions"`
+	MicrosoftDefenderConfigurationOptions MicrosoftDefenderConfigurationOptions `graphql:"... on MicrosoftDefenderConfigurationOptions"`
 	// Add other configuration options here
 }
 

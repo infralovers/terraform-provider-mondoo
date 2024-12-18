@@ -3,12 +3,15 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -73,6 +76,48 @@ func (r *integrationMsDefenderResource) Metadata(ctx context.Context, req resour
 	resp.TypeName = req.ProviderTypeName + "_integration_msdefender"
 }
 
+// NotEqualValidator ensures two string attributes are not equal.
+type NotEqualValidator struct {
+	OtherAttribute string
+}
+
+// ValidateString performs the validation.
+func (v NotEqualValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Retrieve the value of the other attribute
+	var otherAttr types.String
+	diags := req.Config.GetAttribute(ctx, path.Root(v.OtherAttribute), &otherAttr)
+	if diags.HasError() || otherAttr.IsNull() || otherAttr.IsUnknown() {
+		// Skip validation if the other attribute is not set
+		return
+	}
+
+	// Check if the values of the two attributes are equal
+	if req.ConfigValue.ValueString() == otherAttr.ValueString() {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Attributes Cannot Be Equal",
+			fmt.Sprintf("The value of '%s' cannot be the same as '%s'.", req.Path.String(), v.OtherAttribute),
+		)
+	}
+}
+
+// Description returns a plain-text description of the validator's purpose.
+func (v NotEqualValidator) Description(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// MarkdownDescription returns a markdown-formatted description of the validator's purpose.
+func (v NotEqualValidator) MarkdownDescription(ctx context.Context) string {
+	return "Ensures that two attributes are not equal."
+}
+
+// NewNotEqualValidator is a convenience function to create an instance of the validator.
+func NewNotEqualValidator(otherAttribute string) validator.String {
+	return &NotEqualValidator{
+		OtherAttribute: otherAttribute,
+	}
+}
+
 func (r *integrationMsDefenderResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Microsoft Defender for Cloud integration.",
@@ -102,14 +147,24 @@ func (r *integrationMsDefenderResource) Schema(ctx context.Context, req resource
 			"client_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Client ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Client ID must be a valid GUID."),
+					NewNotEqualValidator("tenant_id"),
+				},
 			},
 			"tenant_id": schema.StringAttribute{
 				MarkdownDescription: "Azure Tenant ID.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Tenant ID must be a valid GUID."),
+					NewNotEqualValidator("client_id"),
+				},
 			},
 			"subscription_allow_list": schema.ListAttribute{
 				MarkdownDescription: "List of Azure subscriptions to scan.",
 				Optional:            true,
+				Computed:            true,
+				Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -121,6 +176,8 @@ func (r *integrationMsDefenderResource) Schema(ctx context.Context, req resource
 			"subscription_deny_list": schema.ListAttribute{
 				MarkdownDescription: "List of Azure subscriptions to exclude from scanning.",
 				Optional:            true,
+				Computed:            true,
+				Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -227,9 +284,30 @@ func (r *integrationMsDefenderResource) Read(ctx context.Context, req resource.R
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	allowList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.SubscriptionsAllowlist)
+	denyList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.SubscriptionsDenylist)
+
+	model := integrationMsDefenderResourceModel{
+		Mrn:                   types.StringValue(integration.Mrn),
+		Name:                  types.StringValue(integration.Name),
+		SpaceID:               types.StringValue(integration.SpaceID()),
+		ClientId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.ClientId),
+		TenantId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.TenantId),
+		SubscriptionAllowList: allowList,
+		SubscriptionDenyList:  denyList,
+		Credential: integrationMsDefenderCredentialModel{
+			PEMFile: types.StringValue(data.Credential.PEMFile.ValueString()),
+		},
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationMsDefenderResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -292,15 +370,15 @@ func (r *integrationMsDefenderResource) ImportState(ctx context.Context, req res
 		return
 	}
 
-	allowList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptionsInput.SubscriptionsAllowlist)
-	denyList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptionsInput.SubscriptionsDenylist)
+	allowList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.SubscriptionsAllowlist)
+	denyList := ConvertListValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.SubscriptionsDenylist)
 
 	model := integrationMsDefenderResourceModel{
 		Mrn:                   types.StringValue(integration.Mrn),
 		Name:                  types.StringValue(integration.Name),
 		SpaceID:               types.StringValue(integration.SpaceID()),
-		ClientId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptionsInput.ClientId),
-		TenantId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptionsInput.TenantId),
+		ClientId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.ClientId),
+		TenantId:              types.StringValue(integration.ConfigurationOptions.MicrosoftDefenderConfigurationOptions.TenantId),
 		SubscriptionAllowList: allowList,
 		SubscriptionDenyList:  denyList,
 		Credential: integrationMsDefenderCredentialModel{
