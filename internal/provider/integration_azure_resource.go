@@ -6,9 +6,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -89,10 +92,14 @@ func (r *integrationAzureResource) Schema(ctx context.Context, req resource.Sche
 			"scan_vms": schema.BoolAttribute{
 				MarkdownDescription: "Scan VMs.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"subscription_allow_list": schema.ListAttribute{
 				MarkdownDescription: "List of Azure subscriptions to scan.",
 				Optional:            true,
+				Computed:            true,
+				Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -104,6 +111,8 @@ func (r *integrationAzureResource) Schema(ctx context.Context, req resource.Sche
 			"subscription_deny_list": schema.ListAttribute{
 				MarkdownDescription: "List of Azure subscriptions to exclude from scanning.",
 				Optional:            true,
+				Computed:            true,
+				Default:             listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					// Validate only this attribute or other_attr is configured.
@@ -236,9 +245,28 @@ func (r *integrationAzureResource) Read(ctx context.Context, req resource.ReadRe
 	}
 
 	// Read API call logic
+	integration, err := r.client.GetClientIntegration(ctx, data.Mrn.ValueString())
+	if err != nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	model := integrationAzureResourceModel{
+		SpaceID:               types.StringValue(integration.SpaceID()),
+		Mrn:                   types.StringValue(integration.Mrn),
+		Name:                  types.StringValue(integration.Name),
+		ClientId:              types.StringValue(integration.ConfigurationOptions.AzureConfigurationOptions.ClientId),
+		TenantId:              types.StringValue(integration.ConfigurationOptions.AzureConfigurationOptions.TenantId),
+		SubscriptionAllowList: ConvertListValue(integration.ConfigurationOptions.AzureConfigurationOptions.SubscriptionsWhitelist),
+		SubscriptionDenyList:  ConvertListValue(integration.ConfigurationOptions.AzureConfigurationOptions.SubscriptionsBlacklist),
+		Credential: integrationAzureCredentialModel{
+			PEMFile: types.StringValue(data.Credential.PEMFile.ValueString()),
+		},
+		ScanVms: types.BoolValue(integration.ConfigurationOptions.AzureConfigurationOptions.ScanVms),
+	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (r *integrationAzureResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
