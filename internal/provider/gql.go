@@ -658,6 +658,11 @@ type MicrosoftDefenderConfigurationOptionsInput struct {
 	SubscriptionsDenylist  []string
 }
 
+type SentinelOneConfigurationOptions struct {
+	Host    string
+	Account string
+}
+
 type ClientIntegrationConfigurationOptions struct {
 	AzureConfigurationOptions                  AzureConfigurationOptions                  `graphql:"... on AzureConfigurationOptions"`
 	HostConfigurationOptions                   HostConfigurationOptions                   `graphql:"... on HostConfigurationOptions"`
@@ -672,6 +677,7 @@ type ClientIntegrationConfigurationOptions struct {
 	EmailConfigurationOptions                  EmailConfigurationOptions                  `graphql:"... on EmailConfigurationOptions"`
 	GitlabConfigurationOptions                 GitlabConfigurationOptions                 `graphql:"... on GitlabConfigurationOptions"`
 	MicrosoftDefenderConfigurationOptionsInput MicrosoftDefenderConfigurationOptionsInput `graphql:"... on MicrosoftDefenderConfigurationOptions"`
+	SentinelOneConfigurationOptions            SentinelOneConfigurationOptions            `graphql:"... on SentinelOneConfigurationOptions"`
 	// Add other configuration options here
 }
 
