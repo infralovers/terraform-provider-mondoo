@@ -658,6 +658,13 @@ type MicrosoftDefenderConfigurationOptionsInput struct {
 	SubscriptionsDenylist  []string
 }
 
+type CrowdstrikeFalconConfigurationOptions struct {
+	ClientID     string
+	Cloud        string
+	MemberCID    string
+	CreateAssets bool
+}
+
 type ClientIntegrationConfigurationOptions struct {
 	AzureConfigurationOptions                  AzureConfigurationOptions                  `graphql:"... on AzureConfigurationOptions"`
 	HostConfigurationOptions                   HostConfigurationOptions                   `graphql:"... on HostConfigurationOptions"`
@@ -672,6 +679,7 @@ type ClientIntegrationConfigurationOptions struct {
 	EmailConfigurationOptions                  EmailConfigurationOptions                  `graphql:"... on EmailConfigurationOptions"`
 	GitlabConfigurationOptions                 GitlabConfigurationOptions                 `graphql:"... on GitlabConfigurationOptions"`
 	MicrosoftDefenderConfigurationOptionsInput MicrosoftDefenderConfigurationOptionsInput `graphql:"... on MicrosoftDefenderConfigurationOptions"`
+	CrowdstrikeFalconConfigurationOptions      CrowdstrikeFalconConfigurationOptions      `graphql:"... on CrowdstrikeFalconConfigurationOptions"`
 	// Add other configuration options here
 }
 
